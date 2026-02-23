@@ -1,123 +1,156 @@
-name: Build SukiSU Ultra 40129
+name: Build-SukiSU-Ultra-40129
 
 on:
   workflow_dispatch:
     inputs:
       device:
-        description: 'Device codename'
+        description: Device-codename
         required: true
-        default: 'oneplus_ace5_ultra_b'
+        default: oneplus_ace5_ultra_b
         type: choice
         options:
           - oneplus_ace5_ultra_b
       cpu:
-        description: 'CPU codename'
+        description: CPU-codename
         required: true
-        default: 'MT6991'
+        default: MT6991
         type: choice
         options:
           - MT6991
       kernel:
-        description: 'Kernel version'
+        description: Kernel-version
         required: true
         default: '6.6'
         type: choice
         options:
           - '6.6'
       kpm:
-        description: 'Enable KPM'
+        description: Enable-KPM
         required: true
-        default: 'y'
+        default: y
         type: choice
         options:
-          - 'y'
-          - 'n'
+          - y
+          - n
       susfs:
-        description: 'Enable SUSFS (OnePlus: disable)'
+        description: Enable-SUSFS-OnePlus-disable
         required: true
-        default: 'n'
+        default: n
         type: choice
         options:
-          - 'y'
-          - 'n'
+          - y
+          - n
 
 jobs:
-  build:
+  build-kernel:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      # 定义常量，避免命令行拼接时出现翻译干扰
+      KERNEL_REPO: https://github.com/ParticleG/android_kernel_oneplus_mt6991.git
+      KERNEL_DIR: kernel
+      SUKISU_REPO: https://github.com/SukiSU/SukiSU-Ultra.git
+      SUKISU_DIR: sukisu
+      ANYKERNEL_REPO: https://github.com/osm0sis/AnyKernel3.git
+      ANYKERNEL_TEMPLATE: AnyKernel3-Template
 
     steps:
-      - name: Checkout repository
+      - name: Checkout-Repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up build environment
+      - name: Init-Env
         run: |
           sudo apt-get update -y
           sudo apt-get install -y git-core clang llvm lld gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi bc bison flex libssl-dev libelf-dev python3-pip
           pip3 install pycryptodome
-          git config --global --add safe.directory '*'
+          # 重置Git配置，彻底关闭所有可能的翻译/别名干扰
+          git config --global --unset-all
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          git config --global http.sslVerify false
+          git config --global core.quotepath off
+          # 校验Git命令是否正常
+          git --version
+          echo "Git environment initialized"
 
-      - name: Download kernel source
+      - name: Download-Kernel-Source
         run: |
-          git clone --depth=1 https://github.com/ParticleG/android_kernel_oneplus_mt6991.git kernel
-          cd kernel
+          # 用常量执行，避免参数拼接错误，加冗余空格防护
+          git clone --depth=1  "${KERNEL_REPO}"  "${KERNEL_DIR}"
+          # 强制进入目录，校验是否克隆成功
+          cd "${KERNEL_DIR}" || { echo "Clone failed"; exit 1; }
+          echo "Kernel source downloaded to $(pwd)"
 
-      - name: Apply SukiSU Ultra 40129 patches
+      - name: Apply-40129-Patches
         run: |
-          cd kernel
-          git clone --depth=1 https://github.com/SukiSU/SukiSU-Ultra.git sukisu
-          patch -p1 < sukisu/patches/6.6/sukisu.patch
-          patch -p1 < sukisu/patches/6.6/40129.patch
+          cd "${KERNEL_DIR}" || exit 1
+          git clone --depth=1  "${SUKISU_REPO}"  "${SUKISU_DIR}"
+          # 按顺序应用补丁，40129核心补丁优先
+          patch -p1 < "${SUKISU_DIR}/patches/6.6/sukisu.patch"
+          patch -p1 < "${SUKISU_DIR}/patches/6.6/40129.patch"
+          # 条件应用KPM补丁
           if [ "${{ github.event.inputs.kpm }}" = "y" ]; then
-            patch -p1 < sukisu/patches/6.6/kpm.patch
+            patch -p1 < "${SUKISU_DIR}/patches/6.6/kpm.patch"
           fi
+          echo "All patches applied"
 
-      - name: Configure build parameters
+      - name: Config-Build
         run: |
-          cd kernel
+          cd "${KERNEL_DIR}" || exit 1
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           export LLVM=1
           export LLVM_IAS=1
+          # 加载设备配置
           make oneplus_ace5_ultra_b_defconfig
-          if [ "${{ github.event.inputs.susfs }}" = "n" ]; then
-            scripts/config --disable CONFIG_SUSFS
-          fi
+          # 强制关闭SUSFS（一加设备必选）
+          scripts/config --disable CONFIG_SUSFS
+          # 条件开启KPM
           if [ "${{ github.event.inputs.kpm }}" = "y" ]; then
             scripts/config --enable CONFIG_KPM
           fi
           make savedefconfig
+          echo "Build config completed"
 
-      - name: Compile kernel
+      - name: Compile-Kernel
         run: |
-          cd kernel
+          cd "${KERNEL_DIR}" || exit 1
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           export LLVM=1
           export LLVM_IAS=1
+          # 多核编译，生成核心文件
           make -j$(nproc) Image.gz dtbo.img
+          # 准备打包目录
           mkdir -p ../AnyKernel3
           cp arch/arm64/boot/Image.gz ../AnyKernel3/
           cp arch/arm64/boot/dtbo.img ../AnyKernel3/
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git ../AnyKernel3-Template
-          cp -r ../AnyKernel3-Template/* ../AnyKernel3/
-          echo "ui_print(\"Flashing SukiSU Ultra 40129 for OnePlus Ace 5 Ultra...\");" > ../AnyKernel3/META-INF/com/google/android/updater-script
-          echo "package_extract_file(\"Image.gz\", \"/dev/block/bootdevice/by-name/boot\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
-          echo "package_extract_file(\"dtbo.img\", \"/dev/block/bootdevice/by-name/dtbo\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
-          echo "ui_print(\"SukiSU Ultra 40129 flashed successfully!\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
+          # 克隆打包模板
+          git clone --depth=1  "${ANYKERNEL_REPO}"  "../${ANYKERNEL_TEMPLATE}"
+          cp -r ../"${ANYKERNEL_TEMPLATE}"/* ../AnyKernel3/
+          # 生成刷入脚本（纯英文，避免翻译）
+          cat > ../AnyKernel3/META-INF/com/google/android/updater-script << EOF
+ui_print("Flashing SukiSU Ultra 40129...");
+package_extract_file("Image.gz", "/dev/block/bootdevice/by-name/boot");
+package_extract_file("dtbo.img", "/dev/block/bootdevice/by-name/dtbo");
+ui_print("SukiSU Ultra 40129 flashed!");
+EOF
+          echo "Kernel compiled successfully"
 
-      - name: Package kernel
+      - name: Package-Output
         run: |
-          cd AnyKernel3
-          zip -r9 ../SukiSU-Ultra-40129-Ace5-Ultra-${{ github.run_id }}.zip . -x "*.git*" "*.md" "LICENSE"
+          cd AnyKernel3 || exit 1
+          zip -r9 ../SukiSU-Ultra-40129-OP-Ace5-Ultra-${{ github.run_id }}.zip . -x "*.git*" "*.md" "LICENSE"
           cd ..
+          ls -lh *.zip
+          echo "Package created"
 
-      - name: Upload artifact
+      - name: Upload-Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SukiSU-Ultra-40129-Ace5-Ultra.zip
-          path: SukiSU-Ultra-40129-Ace5-Ultra-${{ github.run_id }}.zip
+          name: SukiSU-Ultra-40129-OP-Ace5-Ultra.zip
+          path: SukiSU-Ultra-40129-OP-Ace5-Ultra-${{ github.run_id }}.zip
           retention-days: 7
