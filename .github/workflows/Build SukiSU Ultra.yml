@@ -4,42 +4,42 @@ on:
   workflow_dispatch:
     inputs:
       device:
-        description: '设备代号'
+        description: 'Device codename'
         required: true
         default: 'oneplus_ace5_ultra_b'
         type: choice
         options:
           - oneplus_ace5_ultra_b
       cpu:
-        description: '处理器代号'
+        description: 'CPU codename'
         required: true
         default: 'MT6991'
         type: choice
         options:
           - MT6991
       kernel:
-        description: '内核版本'
+        description: 'Kernel version'
         required: true
         default: '6.6'
         type: choice
         options:
-          - 6.6
+          - '6.6'
       kpm:
-        description: '开启 KPM'
+        description: 'Enable KPM'
         required: true
         default: 'y'
         type: choice
         options:
-          - y
-          - n
+          - 'y'
+          - 'n'
       susfs:
-        description: '开启 SUSFS (一加禁止开启)'
+        description: 'Enable SUSFS (OnePlus: disable)'
         required: true
         default: 'n'
         type: choice
         options:
-          - y
-          - n
+          - 'y'
+          - 'n'
 
 jobs:
   build:
@@ -48,33 +48,33 @@ jobs:
       contents: write
 
     steps:
-      - name: 检出仓库
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: 配置编译环境与Git安全目录
+      - name: Set up build environment
         run: |
-          sudo apt update
-          sudo apt install -y git-core clang llvm lld gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi bc bison flex libssl-dev libelf-dev python3-pip
+          sudo apt-get update -y
+          sudo apt-get install -y git-core clang llvm lld gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi bc bison flex libssl-dev libelf-dev python3-pip
           pip3 install pycryptodome
-          # 修复Git安全目录问题
           git config --global --add safe.directory '*'
-       - name: 下载内核源码（社区维护版）
-  run: |
-    git clone --depth=1 https://github.com/ParticleG/android_kernel_oneplus_mt6991.git kernel
-    cd kernel
 
+      - name: Download kernel source
+        run: |
+          git clone --depth=1 https://github.com/ParticleG/android_kernel_oneplus_mt6991.git kernel
+          cd kernel
 
-
-      - name: 应用 SukiSU Ultra 补丁
+      - name: Apply SukiSU Ultra patches
         run: |
           cd kernel
           git clone --depth=1 https://github.com/SukiSU/SukiSU-Ultra.git sukisu
           patch -p1 < sukisu/patches/6.6/sukisu.patch
-          [ "${{ github.event.inputs.kpm }}" = "y" ] && patch -p1 < sukisu/patches/6.6/kpm.patch
+          if [ "${{ github.event.inputs.kpm }}" = "y" ]; then
+            patch -p1 < sukisu/patches/6.6/kpm.patch
+          fi
 
-      - name: 配置编译参数
+      - name: Configure build parameters
         run: |
           cd kernel
           export ARCH=arm64
@@ -82,11 +82,15 @@ jobs:
           export LLVM=1
           export LLVM_IAS=1
           make oneplus_ace5_ultra_b_defconfig
-          [ "${{ github.event.inputs.susfs }}" = "n" ] && scripts/config --disable CONFIG_SUSFS
-          [ "${{ github.event.inputs.kpm }}" = "y" ] && scripts/config --enable CONFIG_KPM
+          if [ "${{ github.event.inputs.susfs }}" = "n" ]; then
+            scripts/config --disable CONFIG_SUSFS
+          fi
+          if [ "${{ github.event.inputs.kpm }}" = "y" ]; then
+            scripts/config --enable CONFIG_KPM
+          fi
           make savedefconfig
 
-      - name: 编译内核
+      - name: Compile kernel
         run: |
           cd kernel
           export ARCH=arm64
@@ -104,13 +108,13 @@ jobs:
           echo "package_extract_file(\"dtbo.img\", \"/dev/block/bootdevice/by-name/dtbo\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
           echo "ui_print(\"SukiSU Ultra flashed successfully!\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
 
-      - name: 打包发布
+      - name: Package kernel
         run: |
           cd AnyKernel3
           zip -r9 ../SukiSU-Ultra-Ace5-Ultra-${{ github.run_id }}.zip . -x "*.git*" "*.md" "LICENSE"
           cd ..
 
-      - name: 上传产物
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SukiSU-Ultra-Ace5-Ultra.zip
