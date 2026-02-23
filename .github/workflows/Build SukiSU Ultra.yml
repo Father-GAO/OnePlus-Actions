@@ -1,6 +1,4 @@
-name: 打造SukiSU Ultra
-
-一加 Ace 5 至尊版
+name: Build SukiSU Ultra
 
 on:
   workflow_dispatch:
@@ -55,14 +53,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 配置编译环境
+      - name: 配置编译环境与Git安全目录
         run: |
           sudo apt update
           sudo apt install -y git-core clang llvm lld gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi bc bison flex libssl-dev libelf-dev python3-pip
           pip3 install pycryptodome
+          # 修复Git安全目录问题
+          git config --global --add safe.directory '*'
 
       - name: 下载内核源码（社区维护版）
         run: |
+          # 修复Git克隆命令格式，确保空格正确
           git clone --depth=1 https://github.com/ParticleG/android_kernel_oneplus_mt6991.git kernel
           cd kernel
 
@@ -80,11 +81,8 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export LLVM=1
           export LLVM_IAS=1
-          # 加载对应设备的默认配置
           make oneplus_ace5_ultra_b_defconfig
-          # 关闭 SUSFS（一加设备必须关闭）
           [ "${{ github.event.inputs.susfs }}" = "n" ] && scripts/config --disable CONFIG_SUSFS
-          # 开启 KPM
           [ "${{ github.event.inputs.kpm }}" = "y" ] && scripts/config --enable CONFIG_KPM
           make savedefconfig
 
@@ -96,13 +94,11 @@ jobs:
           export LLVM=1
           export LLVM_IAS=1
           make -j$(nproc) Image.gz dtbo.img
-          # 打包为 AnyKernel3 格式
           mkdir -p ../AnyKernel3
           cp arch/arm64/boot/Image.gz ../AnyKernel3/
           cp arch/arm64/boot/dtbo.img ../AnyKernel3/
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git ../AnyKernel3-Template
           cp -r ../AnyKernel3-Template/* ../AnyKernel3/
-          # 适配设备的刷入脚本
           echo "ui_print(\"Flashing SukiSU Ultra for OnePlus Ace 5 Ultra...\");" > ../AnyKernel3/META-INF/com/google/android/updater-script
           echo "package_extract_file(\"Image.gz\", \"/dev/block/bootdevice/by-name/boot\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
           echo "package_extract_file(\"dtbo.img\", \"/dev/block/bootdevice/by-name/dtbo\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
