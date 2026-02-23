@@ -1,6 +1,4 @@
-name: 打造SukiSU Ultra
-
-一加 Ace 5 至尊版
+name: 组装SukiSU Ultra (40129)
 
 on:
   workflow_dispatch:
@@ -66,11 +64,12 @@ jobs:
           git clone --depth=1 https://github.com/ParticleG/android_kernel_oneplus_mt6991.git kernel
           cd kernel
 
-      - name: 应用 SukiSU Ultra 补丁
+      - name: 应用 SukiSU Ultra 40129 补丁
         run: |
           cd kernel
           git clone --depth=1 https://github.com/SukiSU/SukiSU-Ultra.git sukisu
           patch -p1 < sukisu/patches/6.6/sukisu.patch
+          patch -p1 < sukisu/patches/6.6/40129.patch
           [ "${{ github.event.inputs.kpm }}" = "y" ] && patch -p1 < sukisu/patches/6.6/kpm.patch
 
       - name: 配置编译参数
@@ -80,11 +79,8 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-gnu-
           export LLVM=1
           export LLVM_IAS=1
-          # 加载对应设备的默认配置
           make oneplus_ace5_ultra_b_defconfig
-          # 关闭 SUSFS（一加设备必须关闭）
           [ "${{ github.event.inputs.susfs }}" = "n" ] && scripts/config --disable CONFIG_SUSFS
-          # 开启 KPM
           [ "${{ github.event.inputs.kpm }}" = "y" ] && scripts/config --enable CONFIG_KPM
           make savedefconfig
 
@@ -96,27 +92,25 @@ jobs:
           export LLVM=1
           export LLVM_IAS=1
           make -j$(nproc) Image.gz dtbo.img
-          # 打包为 AnyKernel3 格式
           mkdir -p ../AnyKernel3
           cp arch/arm64/boot/Image.gz ../AnyKernel3/
           cp arch/arm64/boot/dtbo.img ../AnyKernel3/
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git ../AnyKernel3-Template
           cp -r ../AnyKernel3-Template/* ../AnyKernel3/
-          # 适配设备的刷入脚本
-          echo "ui_print(\"Flashing SukiSU Ultra for OnePlus Ace 5 Ultra...\");" > ../AnyKernel3/META-INF/com/google/android/updater-script
+          echo "ui_print(\"Flashing SukiSU Ultra 40129 for OnePlus Ace 5 Ultra...\");" > ../AnyKernel3/META-INF/com/google/android/updater-script
           echo "package_extract_file(\"Image.gz\", \"/dev/block/bootdevice/by-name/boot\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
           echo "package_extract_file(\"dtbo.img\", \"/dev/block/bootdevice/by-name/dtbo\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
-          echo "ui_print(\"SukiSU Ultra flashed successfully!\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
+          echo "ui_print(\"SukiSU Ultra 40129 flashed successfully!\");" >> ../AnyKernel3/META-INF/com/google/android/updater-script
 
       - name: 打包发布
         run: |
           cd AnyKernel3
-          zip -r9 ../SukiSU-Ultra-Ace5-Ultra-${{ github.run_id }}.zip . -x "*.git*" "*.md" "LICENSE"
+          zip -r9 ../SukiSU-Ultra-40129-Ace5-Ultra-${{ github.run_id }}.zip . -x "*.git*" "*.md" "LICENSE"
           cd ..
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
         with:
-          name: SukiSU-Ultra-Ace5-Ultra.zip
-          path: SukiSU-Ultra-Ace5-Ultra-${{ github.run_id }}.zip
+          name: SukiSU-Ultra-40129-Ace5-Ultra.zip
+          path: SukiSU-Ultra-40129-Ace5-Ultra-${{ github.run_id }}.zip
           retention-days: 7
