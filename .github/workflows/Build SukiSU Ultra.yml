@@ -60,11 +60,11 @@ jobs:
           pip3 install pycryptodome
           # 修复Git安全目录问题
           git config --global --add safe.directory '*'
-
-- name: 下载内核源码（社区维护版）
+       - name: 下载内核源码（社区维护版）
   run: |
     git clone --depth=1 https://github.com/ParticleG/android_kernel_oneplus_mt6991.git kernel
     cd kernel
+
 
 
       - name: 应用 SukiSU Ultra 补丁
