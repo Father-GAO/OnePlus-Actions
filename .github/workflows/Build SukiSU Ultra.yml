@@ -62,6 +62,7 @@ jobs:
 
       - name: Download kernel source
         run: |
+          # 关键修复：确保 --depth=1 和 URL 之间有空格
           git clone --depth=1 https://github.com/ParticleG/android_kernel_oneplus_mt6991.git kernel
           cd kernel
 
